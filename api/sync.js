@@ -63,14 +63,45 @@ async function writeBackup(key, doc, day) {
   if (old.length) await del(old);
 }
 
+async function mergeAndWrite(key, incoming) {
+  const day = new Date().toISOString().slice(0, 10);
+  for (let attempt = 0; ; attempt++) {
+    const { doc, etag } = await readDoc(key);
+    const entries = merge(sanitize(doc?.entries), incoming);
+    const needBackup = doc?.lastBackup !== day && entries.length > 0;
+    const next = { v: 2, entries, updatedAt: Date.now(), lastBackup: needBackup ? day : (doc?.lastBackup || null) };
+    try {
+      await put(`gt/${key}/data.json`, JSON.stringify(next), {
+        access: ACCESS, contentType: 'application/json', addRandomSuffix: false, allowOverwrite: true,
+        ...(etag ? { ifMatch: etag } : {}),
+      });
+    } catch (e) {
+      if (attempt < 3) continue; // someone else wrote in between: re-read, merge again
+      throw e;
+    }
+    if (needBackup) { try { await writeBackup(key, next, day); } catch { /* backup is best effort */ } }
+    return { entries, updatedAt: next.updatedAt };
+  }
+}
+
+// Runs the real sync path twice (create, then overwrite with ifMatch) on a throwaway key.
 async function selftest() {
   if (!configured()) return json({ ok: false, configured: false }, 503);
-  const p = `gt/_selftest/${Date.now()}.json`;
-  await put(p, '{"ping":1}', { access: ACCESS, contentType: 'application/json', addRandomSuffix: false });
-  const r = await get(p, { access: ACCESS, useCache: false });
-  const body = r && r.statusCode === 200 ? await new Response(r.stream).json() : null;
-  await del(p);
-  return json({ ok: body?.ping === 1, configured: true, access: ACCESS });
+  const key = `_selftest_${Date.now()}`;
+  const mk = (id, u) => ({ id, date: '2026-01-01', amount: 1, tip: 0, hours: 0, note: '', created: u, u });
+  const steps = {};
+  try {
+    steps.first = (await mergeAndWrite(key, [mk('t1', 1)])).entries.length === 1;
+    steps.second = (await mergeAndWrite(key, [mk('t2', 2)])).entries.length === 2;
+    const { doc } = await readDoc(key);
+    steps.readBack = doc?.entries?.length === 2;
+    const { blobs } = await list({ prefix: `gt/${key}/` });
+    steps.backup = blobs.some((b) => b.pathname.includes('/backup/'));
+  } finally {
+    const { blobs } = await list({ prefix: `gt/${key}/` });
+    if (blobs.length) await del(blobs.map((b) => b.pathname));
+  }
+  return json({ ok: Object.values(steps).every(Boolean), steps, configured: true, access: ACCESS });
 }
 
 export async function GET(request) {
@@ -95,27 +126,7 @@ export async function POST(request) {
     let body;
     try { body = JSON.parse(text); } catch { return json({ error: 'bad_json' }, 400); }
     if (!validId(body?.id)) return json({ error: 'bad_id' }, 400);
-    const incoming = sanitize(body.entries);
-    const key = keyFor(body.id);
-    const day = new Date().toISOString().slice(0, 10);
-
-    for (let attempt = 0; ; attempt++) {
-      const { doc, etag } = await readDoc(key);
-      const entries = merge(sanitize(doc?.entries), incoming);
-      const needBackup = doc?.lastBackup !== day && entries.length > 0;
-      const next = { v: 2, entries, updatedAt: Date.now(), lastBackup: needBackup ? day : (doc?.lastBackup || null) };
-      try {
-        await put(`gt/${key}/data.json`, JSON.stringify(next), {
-          access: ACCESS, contentType: 'application/json', addRandomSuffix: false, allowOverwrite: true,
-          ...(etag ? { ifMatch: etag } : {}),
-        });
-      } catch (e) {
-        if (attempt < 3) continue; // someone else wrote in between: re-read, merge again
-        throw e;
-      }
-      if (needBackup) { try { await writeBackup(key, next, day); } catch { /* backup is best effort */ } }
-      return json({ entries, updatedAt: next.updatedAt });
-    }
+    return json(await mergeAndWrite(keyFor(body.id), sanitize(body.entries)));
   } catch (e) {
     return json({ error: 'server', message: String(e?.message || e).slice(0, 300) }, 500);
   }
