@@ -10,7 +10,8 @@ iPhone-Web-App zum Mitschreiben vom Verdienst in der bluegarage: Schichten, Trin
 - `api/sync.js` – Cloud-Sicherung über einen privaten Vercel-Blob-Speicher (Einträge werden pro Schicht zusammengeführt, tägliche Sicherungskopie, die letzten 30 bleiben)
 - `sw.js` – Offline-Cache
 - `manifest.webmanifest` – Name, Farben und Icons für den Home-Bildschirm
-- `build.mjs` – kopiert alles nach `public/` und zeichnet die App-Icons (keine Abhängigkeiten)
+- `icons/` – App-Icons (aus dem bluegarage-„b“)
+- `build.mjs` – kopiert App und Icons nach `public/` (keine Abhängigkeiten)
 - `vercel.json` – Build-Befehl `node build.mjs`, Ausgabeordner `public`
 
 ## Deployen

@@ -1,5 +1,5 @@
-const CACHE = 'gtracker-3';
-const ASSETS = ['/', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png'];
+const CACHE = 'gtracker-4';
+const ASSETS = ['/', '/manifest.webmanifest', '/icons/icon-192.png?v=2', '/icons/icon-512.png?v=2', '/icons/apple-touch-icon.png?v=2'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
@@ -24,7 +24,7 @@ self.addEventListener('push', (e) => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data ? e.data.text() : '' }; }
   e.waitUntil(self.registration.showNotification(d.title || 'G-Tracker', {
-    body: d.body || '', icon: '/icons/icon-192.png', badge: '/icons/icon-192.png',
+    body: d.body || '', icon: '/icons/icon-192.png?v=2', badge: '/icons/icon-192.png?v=2',
     tag: d.tag || 'g-tracker', data: { url: d.url || '/' },
   }));
 });

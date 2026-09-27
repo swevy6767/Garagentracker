@@ -14,8 +14,8 @@
 <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
 <meta name="color-scheme" content="light dark">
 <link rel="manifest" href="/manifest.webmanifest">
-<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png?v=2">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png?v=2">
 <style>
 :root{
   --bg:#F2F2F7;--card:#FFFFFF;--sheet-bg:#F2F2F7;--sheet-card:#FFFFFF;
@@ -567,7 +567,7 @@ function renderHome(){
     h+='</div>';
   }
   if(!all.length&&!pl.length){
-    h+='<div class="card welcome"><div class="badge bg-blue">'+ic('music')+'</div><h3>Noch nix eingetragen</h3><p>Trag nach jeder Schicht in der bluegarage ein, was du verdient hast.</p><button class="btn filled" data-act="new">Erste Schicht eintragen</button></div>';
+    h+='<div class="card welcome"><div class="badge bg-blue">'+ic('music')+'</div><h3>Noch nix eingetragen</h3><p>Trag nach jeder Schicht in der bluegarage ein, was du verdient hast.</p><button class="btn filled" data-act="new">Erste Schicht eintragen</button><button class="btn" style="color:var(--blue);font-weight:400;height:44px;margin-top:6px" data-act="link-code">Schon Daten? Mit Sync-Code wiederherstellen</button></div>';
   }
   var meta=[];
   if(ms.count){if(ms.tips)meta.push('Trinkgeld '+eur(ms.tips));if(ms.hours){meta.push(fNum.format(ms.hours)+' h');meta.push(eur(ms.sum/ms.hours)+'/h')}if(!meta.length)meta.push('Ø '+eur(ms.sum/ms.count)+' pro Schicht')}
