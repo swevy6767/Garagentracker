@@ -255,6 +255,24 @@ textarea::placeholder{color:var(--label3)}
 .toast svg{width:18px;height:18px;color:var(--green)}
 .toast.on{opacity:1;transform:translate(-50%,0)}
 .meta-foot{text-align:center;font-size:13px;color:var(--label3);margin:4px 16px 20px}
+.btn-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0 16px 24px}
+.btn.gray{background:var(--fill);color:var(--label)}
+.today-card{padding:14px 16px 16px}
+.today-top{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.today-top .txt{flex:1;min-width:0}
+.today-top .badge svg{width:22px;height:22px}
+.today-top b{display:block;font-size:20px;font-weight:700;letter-spacing:.38px}
+.today-top .txt span{display:block;font-size:15px;color:var(--label2);letter-spacing:-.24px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.day .pl{display:block;width:6px;height:6px;border-radius:50%;background:var(--indigo);margin:6px auto 1px}
+.sw{width:51px;height:31px;border-radius:16px;background:var(--fill2);position:relative;flex:0 0 auto;transition:background-color .2s}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.15),0 1px 1px rgba(0,0,0,.16);transition:transform .2s}
+.sw.on{background:var(--green)}
+.sw.on::after{transform:translateX(20px)}
+.sw.dis{opacity:.45}
+.f-row input[type=time]{flex:0 0 auto;-webkit-appearance:none;appearance:none;background:var(--fill);border-radius:8px;padding:6px 11px;min-height:34px;min-width:90px;text-align:center;color:var(--label)}
+.rem-row{display:flex;align-items:center;gap:10px;padding:12px 16px;font-size:15px;letter-spacing:-.24px}
+.rem-row .txt{flex:1;color:var(--label2)}
+.rem-row button{color:var(--blue);font-weight:600}
 </style>
 </head>
 <body>
@@ -333,6 +351,7 @@ function clean(e){
   var u=+e.u||+e.created||0;
   if(e.del)return{id:e.id,del:true,u:u};
   if(typeof e.date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(e.date))return null;
+  if(e.kind==='plan')return{id:e.id,kind:'plan',date:e.date,time:typeof e.time==='string'&&/^\d{2}:\d{2}$/.test(e.time)?e.time:'',note:typeof e.note==='string'?e.note:'',created:+e.created||u,u:u};
   return{id:e.id,date:e.date,amount:+e.amount||0,tip:+e.tip||0,hours:+e.hours||0,note:typeof e.note==='string'?e.note:'',created:+e.created||u,u:u};
 }
 function cleanList(l){return(Array.isArray(l)?l:[]).map(clean).filter(Boolean)}
@@ -341,7 +360,11 @@ function load(){
   return{entries:[],prefs:{}};
 }
 var db=load();
-function live(){return db.entries.filter(function(e){return!e.del})}
+function live(){return db.entries.filter(function(e){return!e.del&&e.kind!=='plan'})}
+function plans(){return db.entries.filter(function(e){return!e.del&&e.kind==='plan'})}
+function allLive(){return db.entries.filter(function(e){return!e.del})}
+function planSort(a,b){return a.date<b.date?-1:a.date>b.date?1:(a.time||'99')<(b.time||'99')?-1:1}
+function planSub(pl){return(pl.time?'ab '+pl.time+' Uhr':'Geplant')+(pl.note?' · '+pl.note:'')}
 function saveLocal(){try{localStorage.setItem(KEY,JSON.stringify({v:2,entries:db.entries,prefs:db.prefs}));return true}catch(e){toast('Speichern am Handy fehlgeschlagen',true);return false}}
 function save(){var ok=saveLocal();if(ok){sync.gen++;sync.dirty=true;saveSync();schedulePush()}return ok}
 try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){})}catch(e){}
@@ -442,6 +465,8 @@ var P={
   arrowUp:'<path d="M12 19V5M6 11l6-6 6 6"/>',
   arrowDown:'<path d="M12 5v14M6 13l6 6 6-6"/>',
   copy:'<rect x="8.5" y="8.5" width="11" height="12" rx="2.2"/><path d="M15.5 8.5V6a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h2"/>',
+  bell:'<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+  cal:'<rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/><path d="M12 12.5v5M9.5 15h5"/>',
   star:'<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>'
 };
 function ic(n,sw){return'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="'+(sw||2)+'" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+P[n]+'</svg>'}
@@ -453,6 +478,9 @@ function entrySub(e){
   if(+e.hours)p.push(fNum.format(e.hours)+' h');
   if(+e.tip)p.push('Trinkgeld '+eur(e.tip));
   return p.length?p.join(' · '):'Schicht';
+}
+function planRow(x,withDate){
+  return'<button class="row" data-act="plan-edit" data-id="'+esc(x.id)+'"><span class="badge bg-indigo">'+ic('cal')+'</span><span class="txt"><div class="t">'+(withDate?esc(fDayShort.format(parseYmd(x.date))):'Geplante Schicht')+'</div><div class="s">'+esc(planSub(x))+'</div></span>'+(pushOn()?'<span class="v" style="color:var(--indigo)">'+ic('bell')+'</span>':'')+CHEV+'</button>';
 }
 function entryRow(e,withDate){
   return'<button class="row" data-act="edit" data-id="'+esc(e.id)+'"><span class="badge bg-blue">'+ic('music')+'</span><span class="txt"><div class="t">'+(withDate?esc(fDayShort.format(parseYmd(e.date))):'Schicht')+'</div><div class="s">'+esc(entrySub(e))+'</div>'+(e.note?'<div class="nt">'+esc(e.note)+'</div>':'')+'</span><span class="amt pos">+'+eur(earned(e))+'</span>'+CHEV+'</button>';
@@ -525,7 +553,20 @@ function renderHome(){
   if(!isStandalone()&&!db.prefs.hideInstall){
     h+='<div class="card hint"><span class="sq bg-blue">'+ic('phone')+'</span><div class="txt"><b>Als App aufs Handy</b><span>In Safari unten auf Teilen tippen → „Zum Home-Bildschirm“. Dann startet’s wie eine echte App.</span></div><button class="x" data-act="hide-install" aria-label="Ausblenden">'+ic('x',2.6)+'</button></div>';
   }
-  if(!all.length){
+  var today=todayStr(),pl=plans(),todays=pl.filter(function(x){return x.date===today}).sort(planSort);
+  var open=pl.filter(function(x){return x.date<today&&x.date>=ymd(new Date(now.getFullYear(),now.getMonth(),now.getDate()-30))}).sort(planSort).reverse();
+  var upcoming=pl.filter(function(x){return x.date>today}).sort(planSort);
+  if(todays.length){
+    var tp=todays[0];
+    h+='<div class="card today-card"><div class="today-top"><span class="badge bg-indigo" style="width:40px;height:40px">'+ic('bell')+'</span><div class="txt"><b>Heute arbeiten</b><span>'+esc(planSub(tp))+'</span></div></div>'+
+      '<div style="display:grid;grid-template-columns:1fr auto;gap:10px"><button class="btn filled" data-act="plan-done" data-id="'+esc(tp.id)+'">Verdienst eintragen</button><button class="btn gray" style="width:auto;padding:0 16px" data-act="plan-edit" data-id="'+esc(tp.id)+'">Ändern</button></div></div>';
+  }
+  if(open.length){
+    h+='<div class="sec-h">Noch nicht eingetragen</div><div class="card list">';
+    open.forEach(function(x){h+='<button class="row" data-act="plan-done" data-id="'+esc(x.id)+'"><span class="badge bg-orange">'+ic('cal')+'</span><span class="txt"><div class="t">'+esc(fDayShort.format(parseYmd(x.date)))+'</div><div class="s">Geplant – Verdienst eintragen</div></span>'+CHEV+'</button>'});
+    h+='</div>';
+  }
+  if(!all.length&&!pl.length){
     h+='<div class="card welcome"><div class="badge bg-blue">'+ic('music')+'</div><h3>Noch nix eingetragen</h3><p>Trag nach jeder Schicht in der bluegarage ein, was du verdient hast.</p><button class="btn filled" data-act="new">Erste Schicht eintragen</button></div>';
   }
   var meta=[];
@@ -545,6 +586,12 @@ function renderHome(){
     '<button class="tile" data-act="stat-open" data-g="week"><span class="tile-label">Diese Woche</span><span class="tile-amt">'+eur(wk.sum)+'</span><span class="tile-sub">'+plural(wk.count,'Schicht','Schichten')+'</span></button>'+
     '<button class="tile" data-act="stat-open" data-g="year"><span class="tile-label">'+now.getFullYear()+'</span><span class="tile-amt">'+eur(yr.sum)+'</span><span class="tile-sub">'+plural(yr.count,'Schicht','Schichten')+'</span></button>'+
   '</div>';
+  h+='<div class="sec-h"><span>Geplant</span><button data-act="plan-new">Planen</button></div>';
+  if(upcoming.length){
+    h+='<div class="card list">';
+    upcoming.slice(0,6).forEach(function(x){h+=planRow(x,true)});
+    h+='</div>';
+  }else h+='<div class="card list"><button class="row" data-act="plan-new"><span class="badge bg-indigo">'+ic('cal')+'</span><span class="txt"><div class="t">Nächste Schicht planen</div><div class="s">'+(pushOn()?'Du kriegst am Tag in der Früh eine Erinnerung':'Mit Erinnerung am Vormittag')+'</div></span>'+CHEV+'</button></div>';
   var items=all.slice().sort(sortDesc);
   if(items.length){
     var lim=showAll?items.length:8;
@@ -561,6 +608,7 @@ function renderCal(){
   var y=cal.y,m=cal.m,first=new Date(y,m,1),dim=new Date(y,m+1,0).getDate(),off=(first.getDay()+6)%7;
   var mk=y+'-'+pad(m+1),ms=aggregate('month')[mk]||EMPTY,map={},t=todayStr(),all=live();
   all.forEach(function(e){if(e.date.slice(0,7)===mk)map[e.date]=(map[e.date]||0)+earned(e)});
+  var pmap={};plans().forEach(function(x){if(x.date.slice(0,7)===mk)pmap[x.date]=true});
   var mName=fMonth.format(first);
   $('#cal-navtitle').textContent=mName+' '+y;
   var h='<div class="lt-row"><div><div class="eyebrow">'+y+'</div><h1 class="large-title">'+esc(mName)+'</h1></div><div class="arrows"><button data-act="prev" aria-label="Voriger Monat">'+ic('left',2.4)+'</button><button data-act="next" aria-label="Nächster Monat">'+ic('right',2.4)+'</button></div></div>';
@@ -569,15 +617,17 @@ function renderCal(){
   for(var i=0;i<off;i++)h+='<div class="day out"></div>';
   for(var d=1;d<=dim;d++){
     var ds=mk+'-'+pad(d),v=map[ds],wd=(off+d-1)%7;
-    h+='<button class="day'+(wd>4?' we':'')+(ds===t?' today':'')+(ds===selDay?' sel':'')+'" data-act="day" data-d="'+ds+'"><span class="n">'+d+'</span><span class="a">'+(v?shortEur(v):'')+'</span></button>';
+    h+='<button class="day'+(wd>4?' we':'')+(ds===t?' today':'')+(ds===selDay?' sel':'')+'" data-act="day" data-d="'+ds+'"><span class="n">'+d+'</span>'+(v?'<span class="a">'+shortEur(v)+'</span>':pmap[ds]?'<span class="pl" aria-label="geplant"></span>':'<span class="a"></span>')+'</button>';
   }
   h+='</div></div>';
   if(selDay&&selDay.slice(0,7)===mk){
-    var dayE=all.filter(function(e){return e.date===selDay}).sort(sortDesc);
+    var dayE=all.filter(function(e){return e.date===selDay}).sort(sortDesc),dayP=plans().filter(function(x){return x.date===selDay}).sort(planSort);
     h+='<div class="sec-h">'+esc(fDayLong.format(parseYmd(selDay)))+'</div><div class="card list">';
-    if(!dayE.length)h+='<div class="empty-row">Keine Schicht an dem Tag.</div>';
+    if(!dayE.length&&!dayP.length)h+='<div class="empty-row">'+(selDay>=t?'Noch nix geplant.':'Keine Schicht an dem Tag.')+'</div>';
+    dayP.forEach(function(x){h+=planRow(x,false)});
     dayE.forEach(function(e){h+=entryRow(e,false)});
-    h+='</div><div class="btn-wrap"><button class="btn tinted" data-act="add-day"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Schicht eintragen</button></div>';
+    var plus='<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
+    h+='</div>'+(selDay>=t?'<div class="btn-row"><button class="btn tinted" data-act="add-day">'+plus+'Verdienst</button><button class="btn gray" data-act="plan-day">'+ic('cal')+'Planen</button></div>':'<div class="btn-wrap"><button class="btn tinted" data-act="add-day">'+plus+'Schicht eintragen</button></div>');
   }
   var monthE=all.filter(function(e){return e.date.slice(0,7)===mk}).sort(sortDesc);
   if(monthE.length){
@@ -676,6 +726,11 @@ function renderMore(){
     '<button class="row" data-act="link-code"><span class="sq bg-indigo">'+ic('link')+'</span><span class="txt t">Mit Code verbinden</span>'+CHEV+'</button>'+
     '<button class="row" data-act="sync-now"><span class="sq bg-teal">'+ic('sync')+'</span><span class="txt t">Jetzt sichern</span></button>'+
   '</div><div class="foot">Jede Schicht wird sofort am Handy gespeichert und automatisch in der Cloud gesichert (mit täglicher Sicherungskopie). Mit dem Sync-Code holst du alles auf ein neues Handy zurück – mach dir am besten einen Screenshot davon.</div>';
+  var ps=pushStatus();
+  h+='<div class="sec-h">Erinnerungen</div><div class="card list settings">'+
+    '<button class="row" data-act="push-toggle" role="switch" aria-checked="'+(ps==='on')+'"><span class="sq bg-red">'+ic('bell')+'</span><span class="txt t">„Heute arbeiten“</span><span class="sw'+(ps==='on'?' on':'')+(ps==='unsupported'||ps==='denied'?' dis':'')+'"></span></button>'+
+    (ps==='on'?'<button class="row" data-act="push-test"><span class="sq bg-gray">'+ic('bell')+'</span><span class="txt t">Test-Benachrichtigung senden</span></button>':'')+
+  '</div><div class="foot">'+(ps==='unsupported'?'Geht nur, wenn G-Tracker am Home-Bildschirm ist (ab iOS 16.4). Füg die App zuerst hinzu und schalt es dort ein.':ps==='denied'?'Benachrichtigungen sind für G-Tracker blockiert. Einschalten unter iPhone-Einstellungen → Mitteilungen → G-Tracker.':'Am Tag einer geplanten Schicht kommt am Vormittag (ca. 9 Uhr, im Winter ca. 8 Uhr) die Nachricht „Heute arbeiten“.')+'</div>';
   h+='<div class="sec-h">Backup-Datei</div><div class="card list settings">'+
     '<button class="row" data-act="export"><span class="sq bg-blue">'+ic('up')+'</span><span class="txt t">Backup speichern</span>'+CHEV+'</button>'+
     '<button class="row" data-act="import"><span class="sq bg-green">'+ic('down')+'</span><span class="txt t">Backup laden</span>'+CHEV+'</button>'+
@@ -684,7 +739,7 @@ function renderMore(){
   h+='<div class="sec-h">App</div><div class="card list settings">'+
     '<button class="row" data-act="install"><span class="sq bg-indigo">'+ic('phone')+'</span><span class="txt t">Zum Home-Bildschirm</span><span class="v">'+(isStandalone()?'Erledigt':'')+'</span>'+CHEV+'</button>'+
   '</div>';
-  h+='<div class="card list settings"><button class="row" data-act="wipe"><span class="sq bg-red">'+ic('trash')+'</span><span class="txt t" style="color:var(--red)">Alle Schichten löschen</span></button></div>';
+  h+='<div class="card list settings"><button class="row" data-act="wipe"><span class="sq bg-red">'+ic('trash')+'</span><span class="txt t" style="color:var(--red)">Alle Daten löschen</span></button></div>';
   h+='<div class="meta-foot">G-Tracker · v'+VERSION+'<br>'+plural(n,'Schicht','Schichten')+' gespeichert</div>';
   $('#more').innerHTML=h;
 }
@@ -703,20 +758,20 @@ function updateNav(){var sc=window.scrollY>36;document.querySelectorAll('.nav').
 window.addEventListener('scroll',updateNav,{passive:true});
 
 /* ---------- Sheet ---------- */
-var sheetEl=$('#sheet'),backEl=$('#backdrop'),sheetOpts=null,lockY=0;
+var sheetEl=$('#sheet'),backEl=$('#backdrop'),sheetOpts=null,lockY=0,sheetOpen=false;
 function lockScroll(){lockY=window.scrollY;document.body.style.position='fixed';document.body.style.top=-lockY+'px';document.body.style.left='0';document.body.style.right='0'}
 function unlockScroll(){document.body.style.position='';document.body.style.top='';document.body.style.left='';document.body.style.right='';window.scrollTo(0,lockY)}
 function openSheet(o){
   sheetOpts=o;
   sheetEl.innerHTML='<div class="grabber"></div><div class="sheet-head"><button class="nav-btn" data-sh="cancel">'+(o.noSave?'':'Abbrechen')+'</button><div class="sheet-title">'+esc(o.title)+'</div>'+(o.noSave?'<button class="nav-btn strong" data-sh="cancel">Fertig</button>':'<button class="nav-btn strong" data-sh="save">'+(o.saveLabel||'Sichern')+'</button>')+'</div><div class="sheet-body">'+o.body+'</div>';
-  lockScroll();
+  if(!sheetOpen){lockScroll();sheetOpen=true}
   if(o.mount)o.mount(sheetEl);
   void sheetEl.offsetHeight;
   backEl.classList.add('on');sheetEl.classList.add('on');
 }
 function closeSheet(){
   if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();
-  backEl.classList.remove('on');sheetEl.classList.remove('on');sheetOpts=null;unlockScroll();
+  backEl.classList.remove('on');sheetEl.classList.remove('on');sheetOpts=null;if(sheetOpen){sheetOpen=false;unlockScroll()}
 }
 sheetEl.addEventListener('click',function(ev){
   var b=ev.target.closest('[data-sh]');
@@ -739,10 +794,10 @@ function shake(el){el.classList.remove('shake');void el.offsetWidth;el.classList
 
 /* ---------- Entry sheet ---------- */
 function findEntry(id){return db.entries.find(function(x){return x.id===id&&!x.del})}
-function openEntry(id,date){
+function openEntry(id,date,fromPlan){
   var e=id?findEntry(id):null;
   if(id&&!e)return;
-  var d=e||{date:date||todayStr(),amount:0,tip:0,hours:0,note:''};
+  var d=e||{date:fromPlan?fromPlan.date:(date||todayStr()),amount:0,tip:0,hours:0,note:fromPlan?fromPlan.note:''};
   var body='<div class="amount-big"><span class="cur">€</span><input id="f-amount" inputmode="decimal" autocomplete="off" placeholder="0" value="'+esc(inputVal(d.amount,1))+'" aria-label="Verdienst in Euro"></div><div class="amount-cap">Verdienst (ohne Trinkgeld)</div>'+
     '<div class="group">'+
       '<div class="f-row"><label for="f-date">Datum</label><input type="date" id="f-date" value="'+esc(d.date)+'"></div>'+
@@ -760,10 +815,87 @@ function openEntry(id,date){
       var now=Date.now(),dateV=el.querySelector('#f-date').value||todayStr();
       var rec={id:e?e.id:uid(),date:dateV,amount:amount,tip:tip,hours:parseNum(el.querySelector('#f-hours').value),note:el.querySelector('#f-note').value.trim(),created:e?e.created:now,u:now};
       if(e)db.entries=db.entries.map(function(x){return x.id===e.id?rec:x});else db.entries.push(rec);
+      if(fromPlan)db.entries=db.entries.map(function(x){return x.id===fromPlan.id?{id:x.id,del:true,u:now}:x});
       if(save()){selDay=dateV;var dd=parseYmd(dateV);if(tab!=='cal'){cal={y:dd.getFullYear(),m:dd.getMonth()}}closeSheet();render();toast(e?'Geändert':'Gespeichert')}
     }
   });
 }
+
+/* ---------- Plan sheet ---------- */
+function tomorrowStr(){var d=new Date();d.setDate(d.getDate()+1);return ymd(d)}
+var REM_ON='<div class="rem-row"><span style="color:var(--green);display:flex">'+'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'+'</span><span class="txt">Erinnerung am Vormittag ist an</span></div>';
+function openPlan(id,date){
+  var x=id?findEntry(id):null;
+  if(id&&!x)return;
+  var d=x||{date:date||tomorrowStr(),time:'',note:''};
+  var rem=pushOn()?REM_ON:'<div class="rem-row"><span style="color:var(--label2);display:flex">'+ic('bell')+'</span><span class="txt">Erinnerung am Vormittag ist aus</span><button type="button" data-sh-act="push">Einschalten</button></div>';
+  var body='<div class="group">'+
+      '<div class="f-row"><label for="f-date">Datum</label><input type="date" id="f-date" value="'+esc(d.date)+'"></div>'+
+      '<div class="f-row"><label for="f-time">Beginn <span style="color:var(--label3)">(optional)</span></label><input type="time" id="f-time" value="'+esc(d.time)+'"></div>'+
+    '</div>'+
+    '<div class="group"><textarea id="f-note" rows="2" placeholder="Notiz (z. B. Konzert, Kabarett …)">'+esc(d.note)+'</textarea></div>'+
+    '<div class="group" id="rem-group">'+rem+'</div>'+
+    (x?'<div class="btn-wrap" style="margin-bottom:12px"><button class="btn tinted" data-sh-act="done">Verdienst eintragen</button></div><div class="btn-wrap"><button class="btn red" data-sh-act="delete">Plan löschen</button></div>':'');
+  openSheet({
+    title:x?'Geplante Schicht':'Schicht planen',body:body,
+    action:function(a){
+      if(a==='push'){enablePush(function(){var g=sheetEl.querySelector('#rem-group');if(g)g.innerHTML=REM_ON});return}
+      if(a==='done'){openEntry(null,null,x);return}
+      if(a==='delete')ask({title:'Plan löschen?',msg:'Die geplante Schicht und ihre Erinnerung werden entfernt.',ok:'Löschen',destructive:true}).then(function(y){if(!y)return;db.entries=db.entries.map(function(z){return z.id===x.id?{id:z.id,del:true,u:Date.now()}:z});save();closeSheet();render();toast('Gelöscht')});
+    },
+    save:function(el){
+      var dateV=el.querySelector('#f-date').value;
+      if(!dateV){shake(el.querySelector('#f-date').closest('.group'));return}
+      var now=Date.now(),rec={id:x?x.id:uid(),kind:'plan',date:dateV,time:el.querySelector('#f-time').value||'',note:el.querySelector('#f-note').value.trim(),created:x?x.created:now,u:now};
+      if(x)db.entries=db.entries.map(function(z){return z.id===x.id?rec:z});else db.entries.push(rec);
+      if(save()){selDay=dateV;var dd=parseYmd(dateV);cal={y:dd.getFullYear(),m:dd.getMonth()};closeSheet();render();toast(x?'Geändert':'Geplant')}
+    }
+  });
+}
+
+/* ---------- Push reminders ---------- */
+function pushSupported(){return'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window}
+function pushOn(){return!!db.prefs.push&&pushSupported()&&Notification.permission==='granted'}
+function pushStatus(){if(!pushSupported())return'unsupported';if(Notification.permission==='denied')return'denied';return pushOn()?'on':'off'}
+function b64ToBytes(b){var p='='.repeat((4-b.length%4)%4),s=atob((b+p).replace(/-/g,'+').replace(/_/g,'/')),o=new Uint8Array(s.length);for(var i=0;i<s.length;i++)o[i]=s.charCodeAt(i);return o}
+function postPush(body){return fetch('/api/push',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)})}
+function registerPush(){
+  return navigator.serviceWorker.ready.then(function(reg){
+    return reg.pushManager.getSubscription().then(function(s){
+      if(s)return s;
+      return fetch('/api/push?key=1',{cache:'no-store'}).then(function(r){return r.json()}).then(function(j){
+        if(!j.publicKey)throw new Error('no key');
+        return reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64ToBytes(j.publicKey)});
+      });
+    });
+  }).then(function(sub){return postPush({id:sync.id,action:'subscribe',subscription:sub.toJSON()})})
+  .then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);db.prefs.pushDay=todayStr();saveLocal()});
+}
+function enablePush(done){
+  if(!pushSupported()){openInstall();return}
+  // has to run straight from a tap - iOS only shows the permission prompt then
+  Notification.requestPermission().then(function(p){
+    if(p!=='granted'){toast('Mitteilungen nicht erlaubt',true);renderMore();return}
+    return registerPush().then(function(){db.prefs.push=true;saveLocal();toast('Erinnerungen an');render();if(done)done()});
+  }).catch(function(){toast('Einschalten hat nicht geklappt',true);renderMore()});
+}
+function disablePush(){
+  db.prefs.push=false;saveLocal();render();toast('Erinnerungen aus');
+  navigator.serviceWorker.ready.then(function(reg){return reg.pushManager.getSubscription()}).then(function(s){
+    if(!s)return;
+    postPush({id:sync.id,action:'unsubscribe',endpoint:s.endpoint}).catch(function(){});
+    return s.unsubscribe();
+  }).catch(function(){});
+}
+function testPush(){
+  toast('Wird gesendet …');
+  postPush({id:sync.id,action:'test'}).then(function(r){return r.json()}).then(function(j){
+    if(j.ok)toast('Gesendet – schau aufs Handy');
+    else registerPush().then(function(){toast('Neu verbunden – nochmal tippen')},function(){toast('Senden hat nicht geklappt',true)});
+  }).catch(function(){toast('Offline – später nochmal',true)});
+}
+// keeps the server's copy of this phone's subscription fresh (once a day)
+function refreshPush(){if(pushOn()&&db.prefs.pushDay!==todayStr())registerPush().catch(function(){})}
 
 /* ---------- Sync code sheet ---------- */
 function openLink(){
@@ -776,6 +908,7 @@ function openLink(){
       closeSheet();
       if(c===sync.id){toast('Ist schon verbunden');return}
       sync.id=c;sync.dirty=true;sync.gen++;saveSync();renderMore();setState('pending');pull();toast('Verbunden');
+      if(pushOn())registerPush().catch(function(){});
     }
   });
 }
@@ -815,7 +948,7 @@ function shareOrDownload(name,text,type){
   download(blob,name);
 }
 function download(blob,name){var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},1500)}
-function exportJSON(){shareOrDownload('g-tracker-backup-'+todayStr()+'.json',JSON.stringify({app:'g-tracker',version:2,exported:new Date().toISOString(),entries:live()},null,1),'application/json')}
+function exportJSON(){shareOrDownload('g-tracker-backup-'+todayStr()+'.json',JSON.stringify({app:'g-tracker',version:2,exported:new Date().toISOString(),entries:allLive()},null,1),'application/json')}
 function exportCSV(){
   var q=function(s){s=String(s==null?'':s);return/[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
   var n=function(v){return v?String(r2(v)).replace('.',','):''};
@@ -854,6 +987,12 @@ document.addEventListener('click',function(ev){
     case'showall':showAll=!showAll;renderHome();break;
     case'hide-install':db.prefs.hideInstall=true;saveLocal();renderHome();break;
     case'install':openInstall();break;
+    case'plan-new':openPlan(null,tomorrowStr());break;
+    case'plan-day':openPlan(null,selDay);break;
+    case'plan-edit':openPlan(id);break;
+    case'plan-done':var pl=findEntry(id);if(pl)openEntry(null,null,pl);break;
+    case'push-toggle':var st=pushStatus();if(st==='on')disablePush();else if(st==='unsupported')openInstall();else if(st==='denied')toast('In den iPhone-Einstellungen erlauben',true);else enablePush();break;
+    case'push-test':testPush();break;
     case'gran':stat.g=t.dataset.v;stat.sel=null;renderStats();break;
     case'stat-sel':stat.sel=t.dataset.k;renderStats();break;
     case'wd-sel':stat.wd=+t.dataset.k;renderStats();break;
@@ -864,10 +1003,10 @@ document.addEventListener('click',function(ev){
       break;
     case'link-code':openLink();break;
     case'sync-now':sync.dirty=true;sync.gen++;saveSync();push();break;
-    case'export':if(!live().length){toast('Noch nix zum Sichern',true);break}exportJSON();break;
+    case'export':if(!allLive().length){toast('Noch nix zum Sichern',true);break}exportJSON();break;
     case'import':$('#importFile').click();break;
     case'csv':if(!live().length){toast('Noch nix zum Exportieren',true);break}exportCSV();break;
-    case'wipe':ask({title:'Alle Schichten löschen?',msg:'Alle Schichten werden gelöscht – auch in der Cloud. Das kann man nicht rückgängig machen.',ok:'Löschen',destructive:true}).then(function(y){if(!y)return;var now=Date.now();db.entries=db.entries.map(function(x){return x.del?x:{id:x.id,del:true,u:now}});save();render();toast('Alles gelöscht')});break;
+    case'wipe':ask({title:'Alle Daten löschen?',msg:'Alle Schichten und Pläne werden gelöscht – auch in der Cloud. Das kann man nicht rückgängig machen.',ok:'Löschen',destructive:true}).then(function(y){if(!y)return;var now=Date.now();db.entries=db.entries.map(function(x){return x.del?x:{id:x.id,del:true,u:now}});save();render();toast('Alles gelöscht')});break;
   }
 });
 (function(){var sx=null,sy=0;var c=$('#cal');
@@ -885,6 +1024,7 @@ window.addEventListener('pagehide',function(){if(sync.dirty&&navigator.sendBeaco
 
 render();
 pull();
+setTimeout(refreshPush,3000);
 if('serviceWorker' in navigator&&location.protocol==='https:'){window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){})})}
 })();
 </script>

@@ -5,6 +5,8 @@ iPhone-Web-App zum Mitschreiben vom Verdienst in der bluegarage: Schichten, Trin
 ## Aufbau
 
 - `index.html` – die ganze App (kein Framework)
+- `api/push.js` – Push-Anmeldung, Test-Nachricht, VAPID-Schlüssel (wird einmal erzeugt und im privaten Speicher abgelegt)
+- `api/remind.js` – täglicher Cron (07:00 UTC ≈ 9 Uhr Sommer / 8 Uhr Winter): „Heute arbeiten“ an Tagen mit geplanter Schicht
 - `api/sync.js` – Cloud-Sicherung über einen privaten Vercel-Blob-Speicher (Einträge werden pro Schicht zusammengeführt, tägliche Sicherungskopie, die letzten 30 bleiben)
 - `sw.js` – Offline-Cache
 - `manifest.webmanifest` – Name, Farben und Icons für den Home-Bildschirm

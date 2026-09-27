@@ -1,4 +1,4 @@
-// G-Tracker cloud sync — stores each user's shifts in a private Vercel Blob store.
+// G-Tracker cloud sync — stores each user's shifts (and planned shifts) in a private Vercel Blob store.
 //
 // GET  /api/sync              header x-sync-id: <code>  -> { entries, updatedAt }
 // POST /api/sync              body { id, entries }       -> merged { entries, updatedAt }
@@ -8,56 +8,15 @@
 // Entries are merged per id (newest `u` wins, deletions are tombstones), so a
 // device can never wipe out shifts that another device added. A dated backup
 // copy is written once per day and the newest 30 are kept.
-import { get, put, list, del } from '@vercel/blob';
-import { createHash } from 'node:crypto';
+import { list, del } from '@vercel/blob';
+import { ACCESS, json, configured, validId, keyFor, sanitize, merge, readDoc, writeJson, errorJson } from './_lib.js';
 
-const ACCESS = process.env.BLOB_ACCESS === 'public' ? 'public' : 'private';
+export { sanitize, merge };
 const MAX_BYTES = 2_000_000;
 const KEEP_BACKUPS = 30;
 
-const json = (data, status = 200) =>
-  new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
-const configured = () => Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID);
-const validId = (id) => typeof id === 'string' && /^[a-z0-9]{20,64}$/.test(id);
-const keyFor = (id) => createHash('sha256').update('g-tracker:' + id).digest('hex').slice(0, 40);
-
-const num = (v, max) => { const n = Number(v); return Number.isFinite(n) && n >= 0 && n <= max ? Math.round(n * 100) / 100 : 0; };
-export function sanitize(list) {
-  if (!Array.isArray(list)) return [];
-  const out = [];
-  for (const e of list.slice(0, 20000)) {
-    if (!e || typeof e.id !== 'string' || e.id.length > 40) continue;
-    const u = Number(e.u) || Number(e.created) || 0;
-    if (e.del) { out.push({ id: e.id, del: true, u }); continue; }
-    if (typeof e.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(e.date)) continue;
-    out.push({
-      id: e.id, date: e.date,
-      amount: num(e.amount, 100000), tip: num(e.tip, 100000), hours: num(e.hours, 48),
-      note: typeof e.note === 'string' ? e.note.slice(0, 500) : '',
-      created: Number(e.created) || u, u,
-    });
-  }
-  return out;
-}
-export function merge(a = [], b = []) {
-  const m = new Map();
-  for (const e of [...a, ...b]) {
-    if (!e || typeof e.id !== 'string') continue;
-    const cur = m.get(e.id);
-    if (!cur || (e.u || 0) > (cur.u || 0) || ((e.u || 0) === (cur.u || 0) && e.del && !cur.del)) m.set(e.id, e);
-  }
-  return [...m.values()];
-}
-
-async function readDoc(key) {
-  const r = await get(`gt/${key}/data.json`, { access: ACCESS, useCache: false });
-  if (!r || r.statusCode !== 200) return { doc: null, etag: null };
-  return { doc: await new Response(r.stream).json(), etag: r.blob.etag };
-}
-
 async function writeBackup(key, doc, day) {
-  const opts = { access: ACCESS, contentType: 'application/json', addRandomSuffix: false, allowOverwrite: true };
-  await put(`gt/${key}/backup/${day}.json`, JSON.stringify(doc), opts);
+  await writeJson(`gt/${key}/backup/${day}.json`, doc);
   const { blobs } = await list({ prefix: `gt/${key}/backup/`, limit: 1000 });
   const old = blobs.map((b) => b.pathname).sort().reverse().slice(KEEP_BACKUPS);
   if (old.length) await del(old);
@@ -71,10 +30,7 @@ async function mergeAndWrite(key, incoming) {
     const needBackup = doc?.lastBackup !== day && entries.length > 0;
     const next = { v: 2, entries, updatedAt: Date.now(), lastBackup: needBackup ? day : (doc?.lastBackup || null) };
     try {
-      await put(`gt/${key}/data.json`, JSON.stringify(next), {
-        access: ACCESS, contentType: 'application/json', addRandomSuffix: false, allowOverwrite: true,
-        ...(etag ? { ifMatch: etag } : {}),
-      });
+      await writeJson(`gt/${key}/data.json`, next, etag ? { ifMatch: etag } : {});
     } catch (e) {
       if (attempt < 3) continue; // someone else wrote in between: re-read, merge again
       throw e;
@@ -114,7 +70,7 @@ export async function GET(request) {
     const { doc } = await readDoc(keyFor(id));
     return json({ entries: doc?.entries || [], updatedAt: doc?.updatedAt || 0 });
   } catch (e) {
-    return json({ error: 'server', message: String(e?.message || e).slice(0, 300) }, 500);
+    return errorJson(e);
   }
 }
 
@@ -128,6 +84,6 @@ export async function POST(request) {
     if (!validId(body?.id)) return json({ error: 'bad_id' }, 400);
     return json(await mergeAndWrite(keyFor(body.id), sanitize(body.entries)));
   } catch (e) {
-    return json({ error: 'server', message: String(e?.message || e).slice(0, 300) }, 500);
+    return errorJson(e);
   }
 }
