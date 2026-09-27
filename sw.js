@@ -1,4 +1,4 @@
-const CACHE = 'gtracker-4';
+const CACHE = 'gtracker-5';
 const ASSETS = ['/', '/manifest.webmanifest', '/icons/icon-192.png?v=2', '/icons/icon-512.png?v=2', '/icons/apple-touch-icon.png?v=2'];
 
 self.addEventListener('install', (e) => {

@@ -273,6 +273,17 @@ textarea::placeholder{color:var(--label3)}
 .rem-row{display:flex;align-items:center;gap:10px;padding:12px 16px;font-size:15px;letter-spacing:-.24px}
 .rem-row .txt{flex:1;color:var(--label2)}
 .rem-row button{color:var(--blue);font-weight:600}
+a.btn{text-decoration:none}
+.btn.stop{background:var(--red);color:#fff;height:58px;font-size:19px;border-radius:14px}
+.run-card{padding:16px 16px 10px;text-align:center}
+.run-top{display:flex;align-items:center;justify-content:center;gap:8px;font-size:15px;font-weight:600;color:var(--red);letter-spacing:-.24px}
+.live{width:9px;height:9px;border-radius:50%;background:var(--red);animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25}}
+.run-timer{font:700 64px/1.05 var(--round);letter-spacing:-1px;margin:10px 0 2px;font-variant-numeric:tabular-nums}
+.run-timer small{font-size:20px;font-weight:600;color:var(--label2);margin-left:6px;letter-spacing:0}
+.run-sub{font-size:15px;color:var(--label2);margin-bottom:16px;letter-spacing:-.24px}
+.run-link{display:block;width:100%;text-align:center;color:var(--blue);font-size:15px;height:40px;margin-top:4px}
+.amount-cap .hrs{display:block;color:var(--label);font-weight:600;margin-top:2px}
 </style>
 </head>
 <body>
@@ -351,8 +362,11 @@ function clean(e){
   var u=+e.u||+e.created||0;
   if(e.del)return{id:e.id,del:true,u:u};
   if(typeof e.date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(e.date))return null;
-  if(e.kind==='plan')return{id:e.id,kind:'plan',date:e.date,time:typeof e.time==='string'&&/^\d{2}:\d{2}$/.test(e.time)?e.time:'',note:typeof e.note==='string'?e.note:'',created:+e.created||u,u:u};
-  return{id:e.id,date:e.date,amount:+e.amount||0,tip:+e.tip||0,hours:+e.hours||0,note:typeof e.note==='string'?e.note:'',created:+e.created||u,u:u};
+  var HM=/^\d{2}:\d{2}$/;
+  if(e.kind==='plan')return{id:e.id,kind:'plan',date:e.date,time:typeof e.time==='string'&&HM.test(e.time)?e.time:'',startedAt:+e.startedAt||0,endedAt:+e.endedAt||0,note:typeof e.note==='string'?e.note:'',created:+e.created||u,u:u};
+  var r={id:e.id,date:e.date,amount:+e.amount||0,tip:+e.tip||0,hours:+e.hours||0,note:typeof e.note==='string'?e.note:'',created:+e.created||u,u:u};
+  if(HM.test(e.start||''))r.start=e.start;if(HM.test(e.end||''))r.end=e.end;
+  return r;
 }
 function cleanList(l){return(Array.isArray(l)?l:[]).map(clean).filter(Boolean)}
 function load(){
@@ -364,7 +378,7 @@ function live(){return db.entries.filter(function(e){return!e.del&&e.kind!=='pla
 function plans(){return db.entries.filter(function(e){return!e.del&&e.kind==='plan'})}
 function allLive(){return db.entries.filter(function(e){return!e.del})}
 function planSort(a,b){return a.date<b.date?-1:a.date>b.date?1:(a.time||'99')<(b.time||'99')?-1:1}
-function planSub(pl){return(pl.time?'ab '+pl.time+' Uhr':'Geplant')+(pl.note?' · '+pl.note:'')}
+function planSub(pl){var st=planState(pl);if(st==='running')return'Läuft seit '+hmOf(planStart(pl))+' Uhr';if(st==='ended'||st==='stale')return'Verdienst noch eintragen';return(pl.time?'ab '+pl.time+' Uhr':'Geplant')+(pl.note?' · '+pl.note:'')}
 function saveLocal(){try{localStorage.setItem(KEY,JSON.stringify({v:2,entries:db.entries,prefs:db.prefs}));return true}catch(e){toast('Speichern am Handy fehlgeschlagen',true);return false}}
 function save(){var ok=saveLocal();if(ok){sync.gen++;sync.dirty=true;saveSync();schedulePush()}return ok}
 try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(function(){})}catch(e){}
@@ -467,6 +481,8 @@ var P={
   copy:'<rect x="8.5" y="8.5" width="11" height="12" rx="2.2"/><path d="M15.5 8.5V6a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h2"/>',
   bell:'<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
   cal:'<rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/><path d="M12 12.5v5M9.5 15h5"/>',
+  stop:'<rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor" stroke="none"/>',
+  play:'<path d="M8 5.5v13l10.5-6.5z" fill="currentColor" stroke="none"/>',
   star:'<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>'
 };
 function ic(n,sw){return'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="'+(sw||2)+'" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+P[n]+'</svg>'}
@@ -553,14 +569,11 @@ function renderHome(){
   if(!isStandalone()&&!db.prefs.hideInstall){
     h+='<div class="card hint"><span class="sq bg-blue">'+ic('phone')+'</span><div class="txt"><b>Als App aufs Handy</b><span>In Safari unten auf Teilen tippen → „Zum Home-Bildschirm“. Dann startet’s wie eine echte App.</span></div><button class="x" data-act="hide-install" aria-label="Ausblenden">'+ic('x',2.6)+'</button></div>';
   }
-  var today=todayStr(),pl=plans(),todays=pl.filter(function(x){return x.date===today}).sort(planSort);
-  var open=pl.filter(function(x){return x.date<today&&x.date>=ymd(new Date(now.getFullYear(),now.getMonth(),now.getDate()-30))}).sort(planSort).reverse();
-  var upcoming=pl.filter(function(x){return x.date>today}).sort(planSort);
-  if(todays.length){
-    var tp=todays[0];
-    h+='<div class="card today-card"><div class="today-top"><span class="badge bg-indigo" style="width:40px;height:40px">'+ic('bell')+'</span><div class="txt"><b>Heute arbeiten</b><span>'+esc(planSub(tp))+'</span></div></div>'+
-      '<div style="display:grid;grid-template-columns:1fr auto;gap:10px"><button class="btn filled" data-act="plan-done" data-id="'+esc(tp.id)+'">Verdienst eintragen</button><button class="btn gray" style="width:auto;padding:0 16px" data-act="plan-edit" data-id="'+esc(tp.id)+'">Ändern</button></div></div>';
-  }
+  var today=todayStr(),pl=plans(),cp=currentPlan(),cpId=cp?cp.id:'';
+  var open=pl.filter(function(x){return x.id!==cpId&&x.date<today&&x.date>=ymd(new Date(now.getFullYear(),now.getMonth(),now.getDate()-30))}).sort(planSort).reverse();
+  var upcoming=pl.filter(function(x){return x.id!==cpId&&x.date>=today}).sort(planSort);
+  cardSig=cp?cp.id+planState(cp):'';
+  if(cp)h+=shiftCard(cp);
   if(open.length){
     h+='<div class="sec-h">Noch nicht eingetragen</div><div class="card list">';
     open.forEach(function(x){h+='<button class="row" data-act="plan-done" data-id="'+esc(x.id)+'"><span class="badge bg-orange">'+ic('cal')+'</span><span class="txt"><div class="t">'+esc(fDayShort.format(parseYmd(x.date)))+'</div><div class="s">Geplant – Verdienst eintragen</div></span>'+CHEV+'</button>'});
@@ -591,7 +604,7 @@ function renderHome(){
     h+='<div class="card list">';
     upcoming.slice(0,6).forEach(function(x){h+=planRow(x,true)});
     h+='</div>';
-  }else h+='<div class="card list"><button class="row" data-act="plan-new"><span class="badge bg-indigo">'+ic('cal')+'</span><span class="txt"><div class="t">Nächste Schicht planen</div><div class="s">'+(pushOn()?'Du kriegst am Tag in der Früh eine Erinnerung':'Mit Erinnerung am Vormittag')+'</div></span>'+CHEV+'</button></div>';
+  }else h+='<div class="card list"><button class="row" data-act="plan-new"><span class="badge bg-indigo">'+ic('cal')+'</span><span class="txt"><div class="t">Nächste Schicht planen</div><div class="s">'+(pushOn()?'Erinnerung um 9 Uhr, Nachfrage um 23 Uhr':'Mit Erinnerung in der Früh und am Abend')+'</div></span>'+CHEV+'</button></div>';
   var items=all.slice().sort(sortDesc);
   if(items.length){
     var lim=showAll?items.length:8;
@@ -730,7 +743,9 @@ function renderMore(){
   h+='<div class="sec-h">Erinnerungen</div><div class="card list settings">'+
     '<button class="row" data-act="push-toggle" role="switch" aria-checked="'+(ps==='on')+'"><span class="sq bg-red">'+ic('bell')+'</span><span class="txt t">„Heute arbeiten“</span><span class="sw'+(ps==='on'?' on':'')+(ps==='unsupported'||ps==='denied'?' dis':'')+'"></span></button>'+
     (ps==='on'?'<button class="row" data-act="push-test"><span class="sq bg-gray">'+ic('bell')+'</span><span class="txt t">Test-Benachrichtigung senden</span></button>':'')+
-  '</div><div class="foot">'+(ps==='unsupported'?'Geht nur, wenn G-Tracker am Home-Bildschirm ist (ab iOS 16.4). Füg die App zuerst hinzu und schalt es dort ein.':ps==='denied'?'Benachrichtigungen sind für G-Tracker blockiert. Einschalten unter iPhone-Einstellungen → Mitteilungen → G-Tracker.':'Am Tag einer geplanten Schicht kommt am Vormittag (ca. 9 Uhr, im Winter ca. 8 Uhr) die Nachricht „Heute arbeiten“.')+'</div>';
+  '</div><div class="foot">'+(ps==='unsupported'?'Geht nur, wenn G-Tracker am Home-Bildschirm ist (ab iOS 16.4). Füg die App zuerst hinzu und schalt es dort ein.':ps==='denied'?'Benachrichtigungen sind für G-Tracker blockiert. Einschalten unter iPhone-Einstellungen → Mitteilungen → G-Tracker.':'An Tagen mit geplanter Schicht kommt zwischen 9 und 10 Uhr eine Erinnerung – und zwischen 23 und 24 Uhr die Frage, wie’s war, falls der Verdienst noch nicht eingetragen ist.')+'</div>';
+  h+='<div class="sec-h">Kalender</div><div class="card list settings"><button class="row" data-act="calendar"><span class="sq bg-red">'+ic('cal')+'</span><span class="txt t">Mit iPhone-Kalender verbinden</span>'+CHEV+'</button></div>'+
+    '<div class="foot">Geplante und gearbeitete Schichten erscheinen automatisch im Kalender „bluegarage“.</div>';
   h+='<div class="sec-h">Backup-Datei</div><div class="card list settings">'+
     '<button class="row" data-act="export"><span class="sq bg-blue">'+ic('up')+'</span><span class="txt t">Backup speichern</span>'+CHEV+'</button>'+
     '<button class="row" data-act="import"><span class="sq bg-green">'+ic('down')+'</span><span class="txt t">Backup laden</span>'+CHEV+'</button>'+
@@ -797,8 +812,10 @@ function findEntry(id){return db.entries.find(function(x){return x.id===id&&!x.d
 function openEntry(id,date,fromPlan){
   var e=id?findEntry(id):null;
   if(id&&!e)return;
-  var d=e||{date:fromPlan?fromPlan.date:(date||todayStr()),amount:0,tip:0,hours:0,note:fromPlan?fromPlan.note:''};
-  var body='<div class="amount-big"><span class="cur">€</span><input id="f-amount" inputmode="decimal" autocomplete="off" placeholder="0" value="'+esc(inputVal(d.amount,1))+'" aria-label="Verdienst in Euro"></div><div class="amount-cap">Verdienst (ohne Trinkgeld)</div>'+
+  var fs=fromPlan?planStart(fromPlan):0,fStart=fromPlan&&fs?hmOf(fs):'',fEnd=fromPlan&&fromPlan.endedAt?hmOf(fromPlan.endedAt):'';
+  var d=e||{date:fromPlan?fromPlan.date:(date||todayStr()),amount:0,tip:0,hours:fromPlan?planHours(fromPlan):0,note:fromPlan?fromPlan.note:''};
+  var span=e?(e.start&&e.end?e.start+'–'+e.end:''):(fStart&&fEnd?fStart+'–'+fEnd:'');
+  var body='<div class="amount-big"><span class="cur">€</span><input id="f-amount" inputmode="decimal" autocomplete="off" placeholder="0" value="'+esc(inputVal(d.amount,1))+'" aria-label="Verdienst in Euro"></div><div class="amount-cap">Verdienst (ohne Trinkgeld)'+(span&&d.hours?'<span class="hrs">'+span+' · '+fNum.format(d.hours)+' h</span>':'')+'</div>'+
     '<div class="group">'+
       '<div class="f-row"><label for="f-date">Datum</label><input type="date" id="f-date" value="'+esc(d.date)+'"></div>'+
       '<div class="f-row"><label for="f-tip">Trinkgeld</label><input id="f-tip" inputmode="decimal" autocomplete="off" placeholder="0,00 €" value="'+esc(inputVal(d.tip,1))+'"></div>'+
@@ -814,6 +831,7 @@ function openEntry(id,date,fromPlan){
       if(amount+tip<=0){shake(el.querySelector('.amount-big'));return}
       var now=Date.now(),dateV=el.querySelector('#f-date').value||todayStr();
       var rec={id:e?e.id:uid(),date:dateV,amount:amount,tip:tip,hours:parseNum(el.querySelector('#f-hours').value),note:el.querySelector('#f-note').value.trim(),created:e?e.created:now,u:now};
+      var rs=e?e.start:fStart,re=e?e.end:fEnd;if(rs)rec.start=rs;if(re)rec.end=re;
       if(e)db.entries=db.entries.map(function(x){return x.id===e.id?rec:x});else db.entries.push(rec);
       if(fromPlan)db.entries=db.entries.map(function(x){return x.id===fromPlan.id?{id:x.id,del:true,u:now}:x});
       if(save()){selDay=dateV;var dd=parseYmd(dateV);if(tab!=='cal'){cal={y:dd.getFullYear(),m:dd.getMonth()}}closeSheet();render();toast(e?'Geändert':'Gespeichert')}
@@ -821,18 +839,95 @@ function openEntry(id,date,fromPlan){
   });
 }
 
+/* ---------- Running shift ---------- */
+var RUN_MAX=16*3600000;
+function hmOf(ms){var d=new Date(ms);return pad(d.getHours())+':'+pad(d.getMinutes())}
+function roundQ(h){return Math.max(0,Math.round(h*4)/4)}
+function durText(ms){var m=Math.max(0,Math.floor(ms/60000));return Math.floor(m/60)+':'+pad(m%60)}
+function untilText(ms){var m=Math.max(1,Math.round(ms/60000)),h=Math.floor(m/60);return h?h+' h '+(m%60)+' min':m+' min'}
+function planStart(x){if(x.startedAt)return x.startedAt;if(!x.time)return 0;var d=parseYmd(x.date);d.setHours(+x.time.slice(0,2),+x.time.slice(3,5),0,0);return d.getTime()}
+function planState(x,now){now=now||Date.now();if(x.endedAt)return'ended';var s=planStart(x);if(!s)return'waiting';if(now<s)return'upcoming';return now-s<RUN_MAX?'running':'stale'}
+function planHours(x){var s=planStart(x);return x.endedAt&&s?roundQ((x.endedAt-s)/3600000):0}
+/** The shift that matters right now: today's, or last night's if it is still running / just ended. */
+function currentPlan(){
+  var now=Date.now(),t=todayStr(),y=ymd(new Date(now-86400000));
+  var c=plans().filter(function(x){
+    if(x.date===t)return true;
+    if(x.date!==y)return false;
+    var st=planState(x,now);return st==='running'||(st==='ended'&&now-x.endedAt<12*3600000);
+  }).sort(planSort);
+  return c.filter(function(x){return planState(x,now)==='running'})[0]||c[0]||null;
+}
+function shiftCard(x){
+  var st=planState(x),s=planStart(x),now=Date.now(),id=esc(x.id),note=x.note?' · '+esc(x.note):'';
+  if(st==='running'){
+    return'<div class="card run-card"><div class="run-top"><span class="live"></span>Schicht läuft</div>'+
+      '<div class="run-timer"><span id="run-timer">'+durText(now-s)+'</span><small>Std.</small></div>'+
+      '<div class="run-sub">seit '+hmOf(s)+' Uhr'+note+'</div>'+
+      '<button class="btn stop" data-act="shift-end" data-id="'+id+'">'+ic('stop',2.4)+'Schicht beenden</button>'+
+      '<button class="run-link" data-act="plan-edit" data-id="'+id+'">Beginn ändern</button></div>';
+  }
+  if(st==='stale'){
+    return'<div class="card today-card"><div class="today-top"><span class="badge bg-orange" style="width:40px;height:40px">'+ic('cal')+'</span><div class="txt"><b>Schicht nicht beendet</b><span>Beginn '+hmOf(s)+' Uhr'+note+'</span></div></div>'+
+      '<button class="btn filled" data-act="plan-done" data-id="'+id+'">Verdienst eintragen</button></div>';
+  }
+  if(st==='ended'){
+    var hrs=planHours(x);
+    return'<div class="card today-card"><div class="today-top"><span class="badge bg-green" style="width:40px;height:40px">'+ic('check',2.6)+'</span><div class="txt"><b>Schicht beendet</b><span>'+(s?hmOf(s)+'–'+hmOf(x.endedAt)+' · '+fNum.format(hrs)+' h':'Um '+hmOf(x.endedAt)+' beendet')+note+'</span></div></div>'+
+      '<button class="btn filled" data-act="plan-done" data-id="'+id+'">Verdienst eintragen</button>'+
+      '<button class="run-link" data-act="plan-edit" data-id="'+id+'">Doch nicht fertig?</button></div>';
+  }
+  var sub=st==='upcoming'?'Beginn '+hmOf(s)+' Uhr · in '+untilText(s-now):'Kein Beginn eingetragen';
+  return'<div class="card today-card"><div class="today-top"><span class="badge bg-indigo" style="width:40px;height:40px">'+ic('bell')+'</span><div class="txt"><b>'+(x.date===todayStr()?'Heute arbeiten':'Schicht')+'</b><span>'+sub+note+'</span></div></div>'+
+    '<div style="display:grid;grid-template-columns:1fr auto;gap:10px"><button class="btn filled" data-act="shift-start" data-id="'+id+'">'+ic('play',2.4)+'Schicht starten</button><button class="btn gray" style="width:auto;padding:0 16px" data-act="plan-edit" data-id="'+id+'">Ändern</button></div></div>';
+}
+var cardSig='';
+function tick(){
+  if(document.hidden)return;
+  var cp=currentPlan(),sig=cp?cp.id+planState(cp):'';
+  if(sig!==cardSig){cardSig=sig;if(!sheetOpen)renderHome();return}
+  var t=$('#run-timer');if(t&&cp)t.textContent=durText(Date.now()-planStart(cp));
+}
+setInterval(tick,15000);
+
+/* ---------- Calendar subscription ---------- */
+function calKey(){
+  var data=new TextEncoder().encode('g-tracker:'+sync.id);
+  return crypto.subtle.digest('SHA-256',data).then(function(buf){return Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,'0')}).join('').slice(0,40)});
+}
+function openCalendar(){
+  if(!(window.crypto&&crypto.subtle)){toast('Geht nur über https',true);return}
+  calKey().then(function(k){
+    var url='webcal://'+location.host+'/api/cal?k='+k;
+    openSheet({title:'iPhone-Kalender',noSave:true,body:
+      '<div class="group"><ol class="steps">'+
+        '<li><span class="no">1</span><span>Auf <b>Kalender abonnieren</b> tippen.</span></li>'+
+        '<li><span class="no">2</span><span>Im iPhone-Fenster <b>Abonnieren</b> und dann <b>Hinzufügen</b> tippen.</span></li>'+
+        '<li><span class="no">3</span><span>Fertig – deine geplanten Schichten (und gearbeitete mit Verdienst) stehen im Kalender <b>„bluegarage“</b>.</span></li>'+
+      '</ol></div>'+
+      '<div class="btn-wrap" style="margin-bottom:12px"><a class="btn filled" href="'+esc(url)+'">'+ic('cal')+'Kalender abonnieren</a></div>'+
+      '<div class="btn-wrap"><button class="btn gray" data-sh-act="copy">Link kopieren</button></div>'+
+      '<div class="foot" style="margin-top:-8px">Neue Pläne landen automatisch im Kalender – das iPhone holt abonnierte Kalender von selbst ab, meistens innerhalb einer Stunde. In die Erinnerungen-App kann eine Web-App leider nix eintragen, dafür kommen die Push-Nachrichten.</div>',
+      action:function(a){if(a==='copy'){var https=url.replace('webcal://','https://');if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(https).then(function(){toast('Link kopiert')},function(){toast(https)});else toast(https)}}
+    });
+  });
+}
+
 /* ---------- Plan sheet ---------- */
 function tomorrowStr(){var d=new Date();d.setDate(d.getDate()+1);return ymd(d)}
-var REM_ON='<div class="rem-row"><span style="color:var(--green);display:flex">'+'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'+'</span><span class="txt">Erinnerung am Vormittag ist an</span></div>';
+var REM_ON='<div class="rem-row"><span style="color:var(--green);display:flex">'+'<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'+'</span><span class="txt">Erinnerungen an: 9 Uhr „Heute arbeiten“, 23 Uhr „Wie war’s?“</span></div>';
 function openPlan(id,date){
   var x=id?findEntry(id):null;
   if(id&&!x)return;
-  var d=x||{date:date||tomorrowStr(),time:'',note:''};
-  var rem=pushOn()?REM_ON:'<div class="rem-row"><span style="color:var(--label2);display:flex">'+ic('bell')+'</span><span class="txt">Erinnerung am Vormittag ist aus</span><button type="button" data-sh-act="push">Einschalten</button></div>';
+  var d=x||{date:date||tomorrowStr(),time:db.prefs.lastPlanTime||'18:30',note:''};
+  var status='';
+  if(x&&x.endedAt)status='<div class="group"><div class="rem-row"><span style="color:var(--green);display:flex">'+ic('check',2.6)+'</span><span class="txt">Beendet um '+hmOf(x.endedAt)+' Uhr</span><button type="button" data-sh-act="resume">Weiterlaufen</button></div></div>';
+  else if(x&&x.startedAt)status='<div class="group"><div class="rem-row"><span style="color:var(--red);display:flex">'+ic('play',2.4)+'</span><span class="txt">Gestartet um '+hmOf(x.startedAt)+' Uhr</span></div></div>';
+  var rem=pushOn()?REM_ON:'<div class="rem-row"><span style="color:var(--label2);display:flex">'+ic('bell')+'</span><span class="txt">Erinnerungen (9 Uhr und 23 Uhr) sind aus</span><button type="button" data-sh-act="push">Einschalten</button></div>';
   var body='<div class="group">'+
       '<div class="f-row"><label for="f-date">Datum</label><input type="date" id="f-date" value="'+esc(d.date)+'"></div>'+
-      '<div class="f-row"><label for="f-time">Beginn <span style="color:var(--label3)">(optional)</span></label><input type="time" id="f-time" value="'+esc(d.time)+'"></div>'+
-    '</div>'+
+      '<div class="f-row"><label for="f-time">Beginn</label><input type="time" id="f-time" value="'+esc(d.time)+'"></div>'+
+    '</div>'+status+
     '<div class="group"><textarea id="f-note" rows="2" placeholder="Notiz (z. B. Konzert, Kabarett …)">'+esc(d.note)+'</textarea></div>'+
     '<div class="group" id="rem-group">'+rem+'</div>'+
     (x?'<div class="btn-wrap" style="margin-bottom:12px"><button class="btn tinted" data-sh-act="done">Verdienst eintragen</button></div><div class="btn-wrap"><button class="btn red" data-sh-act="delete">Plan löschen</button></div>':'');
@@ -841,12 +936,17 @@ function openPlan(id,date){
     action:function(a){
       if(a==='push'){enablePush(function(){var g=sheetEl.querySelector('#rem-group');if(g)g.innerHTML=REM_ON});return}
       if(a==='done'){openEntry(null,null,x);return}
+      if(a==='resume'){var n=Date.now();db.entries=db.entries.map(function(z){return z.id===x.id?Object.assign({},z,{endedAt:0,u:n}):z});save();closeSheet();render();toast('Schicht läuft weiter');return}
       if(a==='delete')ask({title:'Plan löschen?',msg:'Die geplante Schicht und ihre Erinnerung werden entfernt.',ok:'Löschen',destructive:true}).then(function(y){if(!y)return;db.entries=db.entries.map(function(z){return z.id===x.id?{id:z.id,del:true,u:Date.now()}:z});save();closeSheet();render();toast('Gelöscht')});
     },
     save:function(el){
       var dateV=el.querySelector('#f-date').value;
       if(!dateV){shake(el.querySelector('#f-date').closest('.group'));return}
-      var now=Date.now(),rec={id:x?x.id:uid(),kind:'plan',date:dateV,time:el.querySelector('#f-time').value||'',note:el.querySelector('#f-note').value.trim(),created:x?x.created:now,u:now};
+      var tV=el.querySelector('#f-time').value||'';
+      var now=Date.now(),rec={id:x?x.id:uid(),kind:'plan',date:dateV,time:tV,note:el.querySelector('#f-note').value.trim(),created:x?x.created:now,u:now,
+        // a changed start time (or date) replaces a hand-started time
+        startedAt:x&&x.time===tV&&x.date===dateV?x.startedAt||0:0,endedAt:x?x.endedAt||0:0};
+      if(tV)db.prefs.lastPlanTime=tV;
       if(x)db.entries=db.entries.map(function(z){return z.id===x.id?rec:z});else db.entries.push(rec);
       if(save()){selDay=dateV;var dd=parseYmd(dateV);cal={y:dd.getFullYear(),m:dd.getMonth()};closeSheet();render();toast(x?'Geändert':'Geplant')}
     }
@@ -991,6 +1091,9 @@ document.addEventListener('click',function(ev){
     case'plan-day':openPlan(null,selDay);break;
     case'plan-edit':openPlan(id);break;
     case'plan-done':var pl=findEntry(id);if(pl)openEntry(null,null,pl);break;
+    case'shift-start':var sp=findEntry(id);if(sp){var n1=Date.now();db.entries=db.entries.map(function(z){return z.id===id?Object.assign({},z,{startedAt:n1,endedAt:0,u:n1}):z});save();render();toast('Schicht gestartet')}break;
+    case'shift-end':var ep=findEntry(id);if(ep){var n2=Date.now(),upd=Object.assign({},ep,{endedAt:n2,u:n2});if(!planStart(ep))upd.startedAt=n2;db.entries=db.entries.map(function(z){return z.id===id?upd:z});save();render();openEntry(null,null,upd)}break;
+    case'calendar':openCalendar();break;
     case'push-toggle':var st=pushStatus();if(st==='on')disablePush();else if(st==='unsupported')openInstall();else if(st==='denied')toast('In den iPhone-Einstellungen erlauben',true);else enablePush();break;
     case'push-test':testPush();break;
     case'gran':stat.g=t.dataset.v;stat.sel=null;renderStats();break;

@@ -6,7 +6,10 @@ iPhone-Web-App zum Mitschreiben vom Verdienst in der bluegarage: Schichten, Trin
 
 - `index.html` – die ganze App (kein Framework)
 - `api/push.js` – Push-Anmeldung, Test-Nachricht, VAPID-Schlüssel (wird einmal erzeugt und im privaten Speicher abgelegt)
-- `api/remind.js` – täglicher Cron (07:00 UTC ≈ 9 Uhr Sommer / 8 Uhr Winter): „Heute arbeiten“ an Tagen mit geplanter Schicht
+- `api/remind.js` – Cron um 07:00 und 08:00 UTC, sendet nur wenn es in Österreich 9 Uhr ist: „Heute arbeiten“ an Tagen mit geplanter Schicht
+- `api/remind-evening.js` – Cron um 21:00 und 22:00 UTC, sendet nur um 23 Uhr österreichischer Zeit: „Wie war’s?“, solange die Schicht offen ist
+- `api/_messages.js` – Texte für beide Erinnerungen (jeden Tag ein anderer)
+- `api/cal.js` – Kalender-Abo (webcal) mit geplanten und gearbeiteten Schichten; Schlüssel ist der Hash des Sync-Codes
 - `api/sync.js` – Cloud-Sicherung über einen privaten Vercel-Blob-Speicher (Einträge werden pro Schicht zusammengeführt, tägliche Sicherungskopie, die letzten 30 bleiben)
 - `sw.js` – Offline-Cache
 - `manifest.webmanifest` – Name, Farben und Icons für den Home-Bildschirm

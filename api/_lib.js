@@ -13,6 +13,10 @@ export const errorJson = (e) => json({ error: 'server', message: String(e?.messa
 
 /** Today's date in Austria as YYYY-MM-DD. */
 export const viennaDay = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Vienna' }).format(d);
+/** Current hour (0-23) and HH:MM in Austria. */
+export const viennaHour = (d = new Date()) => Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Vienna', hour: '2-digit', hourCycle: 'h23' }).format(d));
+export const viennaHM = (d = new Date()) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Vienna', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
+const HM = /^\d{2}:\d{2}$/;
 
 const num = (v, max) => { const n = Number(v); return Number.isFinite(n) && n >= 0 && n <= max ? Math.round(n * 100) / 100 : 0; };
 
@@ -28,15 +32,20 @@ export function sanitize(list) {
     const note = typeof e.note === 'string' ? e.note.slice(0, 500) : '';
     const created = Number(e.created) || u;
     if (e.kind === 'plan') {
-      const time = typeof e.time === 'string' && /^\d{2}:\d{2}$/.test(e.time) ? e.time : '';
-      out.push({ id: e.id, kind: 'plan', date: e.date, time, note, created, u });
+      const time = typeof e.time === 'string' && HM.test(e.time) ? e.time : '';
+      const startedAt = Number(e.startedAt) > 0 ? Number(e.startedAt) : 0;
+      const endedAt = Number(e.endedAt) > 0 ? Number(e.endedAt) : 0;
+      out.push({ id: e.id, kind: 'plan', date: e.date, time, startedAt, endedAt, note, created, u });
       continue;
     }
-    out.push({
+    const shift = {
       id: e.id, date: e.date,
       amount: num(e.amount, 100000), tip: num(e.tip, 100000), hours: num(e.hours, 48),
       note, created, u,
-    });
+    };
+    if (typeof e.start === 'string' && HM.test(e.start)) shift.start = e.start;
+    if (typeof e.end === 'string' && HM.test(e.end)) shift.end = e.end;
+    out.push(shift);
   }
   return out;
 }
